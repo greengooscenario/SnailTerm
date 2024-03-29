@@ -1,7 +1,9 @@
 
--improve compatibility with Series3 emulator (prevent freezing on keypress after "iowrite" around line 166)
+FIXED:  -improve compatibility with Series3 emulator (prevent freezing on keypress after "iowrite" around line 166)
 
 -make ports other than "TTY:A" accessible ("B" and "I" would make sense)
+
+-support for high baud rates
 
 -xmodem/ymodem file transfer support
 

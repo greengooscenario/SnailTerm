@@ -1,13 +1,13 @@
 # SnailTerm
 A serial terminal app with VT100 capability for Psion Series3 PDAs (both classic and following models), written in OPL.
 
-## Version, Author, Copyright
-
-SnailTerm Distribution 1.0
+## Author, Copyright, Version
 
 SnailTerm is (C) 2004-2024 Matthias Jacobs.
 
-This is free software, licensed under GNU GPL version 3. See file "LICENSE" for details.
+This is free software, licensed under GNU GPL version 3. See file LICENSE for details.
+
+For the version number of this release, see top of CHANGELOG.md
 
 ## Binary Installation
 
@@ -21,6 +21,6 @@ Just copy STERM-3A.OPA into the APP directory of any disk. Press PSION-i on the 
 |STERM.OPL|		\OPL\     |
 |STERM.PIC|		\OPD\     |
 
-Open STERM in the "Program" app and press PSION-t to translate. You might need to adapt the "icon" line in the header to the actual location you chose for STERM.PIC.
+Open STERM in the "Program" app and press PSION-t to translate. You might need to adapt the "_icon_" line in the header to the actual location you chose for STERM.PIC.
 
  

@@ -2,14 +2,14 @@ APP STerm
 	type 4
 	path "\stm"
 	ext "stm"
-	icon "m:\opd\sterm.pic" REM Adapt to your file location, or outcomment
+	icon "d:\opd\sterm.pic" REM Adapt to your file location, or outcomment
 ENDA
 
 PROC root:
 	local ret%,k%(2),c%,arg%,chrset%
 	local curs%,timer%,blink&
 	local syscmd$(129),evcode%(6)
-	global readreq%,keyreq%,timreq%,port%
+	global readreq%,keyreq%,wrtreq%,timreq%,port%
 	global x%,y%,g%(2),fh%,fw%,xo%,yo%
 	global tmarg%,fpos%,srset%
 	global machine%
@@ -24,7 +24,7 @@ PROC root:
 	
 	openfont:
 	gtmode 3
-	giprint ("Using " + num$(fw%,2) + " " + num$(fh%,2) + " font"),2
+	rem giprint ("Using " + num$(fw%,2) + " " + num$(fh%,2) + " font"),2
 	
 	iniscrn:
 	fpos%=fh%*24
@@ -89,7 +89,7 @@ PROC root:
 				elseif c%=%q
 					gprint "Ä"
 				else
-		rem			giprint chr$(c%)
+					rem	giprint chr$(c%)
 					gprint "*"
 				endif
 				
@@ -163,7 +163,12 @@ PROC root:
 				stmenu:
 			
 			elseif k%(1)<>0 
-				ret%=iowrite(port%,addr(k%(1)),1)
+				rem ret%=iowrite(port%,addr(k%(1)),1)
+				if wrtreq%=-46
+					giprint "Warning: Error while sending?!"
+				endif
+				arg%=1
+				ret%=ioa(port%,2,wrtreq%,k%(),arg%) rem Func 2: Write
 				if ret%<0
 					fehler:(ret%)
 				endif
@@ -902,12 +907,12 @@ PROC initline:
 		fehler:(ret%)
 		return
 	endif
-	ret%=iow(port%,9,#0,#0)  rem Discard buffer contents
+	ret%=iow(port%,9,#0,#0)  rem Func 9: Discard buffer contents
 	if ret%<0
 		fehler:(ret%)
 		return
 	endif
-	ret%=iow(port%,7,a%(1),par2%)
+	ret%=iow(port%,7,a%(1),par2%) rem Func 7: Set serial settings
 	if ret%<0
 		fehler:(ret%)
 	endif
