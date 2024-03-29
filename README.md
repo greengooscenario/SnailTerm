@@ -16,10 +16,10 @@ Just copy STERM-3A.OPA into the APP directory of any disk. Press PSION-i on the 
 
 ## Translating From Source
 
-|_File name_|		_goes where_|
+|_File name_|	_goes where_|
 |---------|---------------|
-|STERM.OPL|		\OPL\|
-|STERM.PIC|		\OPD\|
+|STERM.OPL|		\OPL\     |
+|STERM.PIC|		\OPD\     |
 
 Open STERM in the "Program" app and press PSION-t to translate. You might need to adapt the "icon" line in the header to the actual location you chose for STERM.PIC.
 
