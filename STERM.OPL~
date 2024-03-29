@@ -1,0 +1,979 @@
+APP STerm
+	type 4
+	path "\stm"
+	ext "stm"
+	icon "m:\opd\sterm.pic" REM Adapt to your file location, or outcomment
+ENDA
+
+PROC root:
+	local ret%,k%(2),c%,arg%,chrset%
+	local curs%,timer%,blink&
+	local syscmd$(129),evcode%(6)
+	global readreq%,keyreq%,timreq%,port%
+	global x%,y%,g%(2),fh%,fw%,xo%,yo%
+	global tmarg%,fpos%,srset%
+	global machine%
+	
+	if gwidth<>240
+		machine%=1  rem We use a S3a or similar, not a classic S3
+	endif
+	
+	parscmdl:
+	
+	chrset%=1
+	
+	openfont:
+	gtmode 3
+	giprint ("Using " + num$(fw%,2) + " " + num$(fh%,2) + " font"),2
+	
+	iniscrn:
+	fpos%=fh%*24
+	
+	gsetwin 1,1,fw%*80,fh%*24
+		gupdate off
+	
+	curs%=gcreate(0,fh%,fw%,1,1)
+	gmove -1,-1
+	ginvert fw%+4,4
+	guse 1
+		
+
+	initline:
+	rem rsset:(13,0,8,1,11,&0)
+	REM Baud,Parity,Databits,Stopbits,
+	REM Handshake,Cancel char
+	
+	ret%=ioopen(timer%,"tim:",-1)
+	if ret%<0
+		giprint "Failed to load 'TIM:' - "+err$(ret%)
+	endif
+	
+	y%=fh%
+	giprint "Terminal ready"	
+	do
+		
+		if readreq%<>-46 
+			if readreq%<0
+				giprint err$(readreq%)
+			endif
+			if c%=27
+				escseq:
+			elseif c%=10 or c%=11 or c%=12
+				newline:
+			elseif c%=13
+				x%=0
+			elseif c%=8
+				if x%>0
+					x%=x%-fw%
+				endif
+			elseif c%=14   rem SO
+				chrset%=2
+			elseif c%=15   rem SI
+				chrset%=1
+			elseif c%=7
+				beep 5,400
+			
+			elseif c%=0 or c%=127
+				rem these chars are trapped and ignored
+			elseif g%(chrset%)=0  rem ASCII
+				gat x%,y%+tmarg%
+				gprint chr$(c%)
+				x%=x%+fw%
+				if x%>=fw%*80
+					newline:
+				endif
+			elseif g%(chrset%)=1  rem SG
+				gat x%,y%+tmarg%
+				if c%=%_
+					gprint " "
+				elseif c%=%q
+					gprint "Ä"
+				else
+		rem			giprint chr$(c%)
+					gprint "*"
+				endif
+				
+				if c%<>%d and c%<>%e and c%<>%h
+					x%=x%+fw%
+					if x%>=fw%*80
+						newline:
+					endif
+				endif
+			endif
+
+			arg%=1
+			ret%=ioa(port%,1,readreq%,c%,arg%)
+			if ret%<0
+				fehler:(ret%)
+			endif
+		endif
+
+		if keyreq%<>-46
+			
+			k%(2)=peekb(addr(k%(2)))
+			
+			if (k%(1) and $400)<>0
+				if k%(1)=$404
+					if getcmd$="X"  rem Exit
+						stop
+					else
+						beep 20,800
+					endif
+				endif
+			elseif k%(1)=259 and k%(2)=2
+				gsetwin goriginx+fw%,goriginy
+			elseif k%(1)=258 and k%(2)=2
+				gsetwin goriginx-fw%,goriginy
+			elseif k%(1)=257 and k%(2)=2
+				gsetwin goriginx,goriginy-fh%
+			elseif k%(1)=256 and k%(2)=2
+				gsetwin goriginx,goriginy+fh%
+				
+			elseif k%(1)=%s and k%(2)=4
+				send:(chr$(19)) rem XOFF
+			elseif k%(1)=%q and k%(2)=4
+				send:(chr$(17)) rem XON
+				
+			elseif k%(1)=%r and k%(2)=4
+				busy "Reopening port..."
+				ioclose(port%)
+				ret%=ioopen(port%,"tty:a",-1)
+				if ret%<0
+					fehler:(ret%)
+				endif
+				busy off
+				giprint "Port reopened"
+			
+			elseif k%(2)=8 rem <Psion>-key
+				if menfunc%:(k%(1)-512) < 0
+					print k%(1)
+				endif
+			
+			elseif k%(1)=256 REM Cursor keys
+				send:(chr$(27)+"[A")
+			elseif k%(1)=257
+				send:(chr$(27)+"[B")
+			elseif k%(1)=258
+				send:(chr$(27)+"[C")
+			elseif k%(1)=259
+				send:(chr$(27)+"[D")
+			elseif k%(2)=4
+				ctrl:(k%(1))
+			elseif k%(1)=290  REM Menu
+				stmenu:
+			
+			elseif k%(1)<>0 
+				ret%=iowrite(port%,addr(k%(1)),1)
+				if ret%<0
+					fehler:(ret%)
+				endif
+			endif
+			
+			 rem  We use the console device for an async "getevent":
+			ret%=ioa(-2,14,keyreq%,k%(1),#0)
+			if ret%<0
+					fehler:(ret%)
+			endif
+			
+		endif
+		
+		if timreq%<>-46
+				gupdate
+			xo%=goriginx
+			yo%=goriginy
+			guse curs%
+			ginvert fw%+4,4
+			gsetwin xo%+x%,yo%+y%+tmarg%-1
+			guse 1
+			blink&=A.blink%
+			rem timarg&=1
+			ret%=ioa(timer%,1,timreq%,blink&,#0)
+			if ret%<0
+				fehler:(ret%)
+			endif
+		endif
+		
+		lock off
+		
+		iowait 
+		
+	until 0
+ENDP
+
+PROC newline:
+	x%=0
+	y%=y%+fh%
+	
+	if (y%+tmarg%)>abs(goriginy)+80
+		gsetwin 1,goriginy-fh%
+	endif
+	
+	if (y%+tmarg%)>fpos%
+		if srset%=1
+			gscroll 0,fh%,0,tmarg%-fh%,fw%*80,fh%
+		endif
+		gscroll 0,-fh%,0,tmarg%,fw%*80,fpos%-tmarg%
+		y%=(fh%*24)-tmarg%
+	endif
+ENDP
+
+PROC ctrl:(k%)
+	beep 20,200
+	if k%>64 and k%<94
+		send:(chr$(k%-64))
+	elseif k%>96 and k%<123
+		send:(chr$(k%-96))
+	elseif k%=32
+		send:(chr$(0))
+	endif
+ENDP
+
+PROC send:(string$)
+	local buffer$(10),ret%
+	buffer$=string$
+	ret%=iowrite(port%,addr(buffer$)+1,len(buffer$))
+	if ret%<0
+		fehler:(ret%)
+	endif
+ENDP
+
+PROC escseq:
+	local c%,seq$(15),scheme$(15),ret%
+	do
+		ioread(port%,addr(c%),1)
+		
+		if c%>=48 and c%<=57
+			scheme$=scheme$+"9"
+		elseif c%=%[
+			scheme$=scheme$+"K"
+		elseif c%=%;
+			scheme$=scheme$+"S"
+		elseif c%=%?
+			scheme$=scheme$+"Q"
+		elseif c%=%=
+			scheme$=scheme$+"G"
+		elseif c%=%>
+			scheme$=scheme$+"R"
+		elseif c%=%(
+			scheme$=scheme$+"A"
+		elseif c%=%)
+			scheme$=scheme$+"Z"
+		else
+			scheme$=scheme$+chr$(c%)
+		endif
+		seq$=seq$+chr$(c%)
+		
+		onerr notknow
+		ret%=@%(scheme$):(seq$)
+		notknow::
+		onerr off
+	until ret%<>0 or len(seq$)=14
+
+	if ret%=0
+		send:(chr$(19))
+		alert(seq$,scheme$+"   "+fix$(ret%,0,3),"weiter")
+		send:(chr$(17))
+	endif
+
+	rem print err
+ENDP
+
+PROC KA%:(seq$) REM Sequenz-Prozeduren
+	y%=y%-fh%
+	if y%<0
+		y%=0
+	endif
+	return 1
+ENDP
+
+PROC KB%:(seq$)    REM Fehler?
+	y%=y%+fh%
+	if y%>fw%*80
+		y%=fw%*80
+	endif
+	return 1
+ENDP
+
+PROC KC%:(seq$)    REM Fehler?
+	x%=x%+fw%
+	if x%>fh%*24
+		x%=fh%*24
+	endif
+	return 1
+ENDP
+
+PROC KD%:(seq$)
+	x%=x%-fw%
+	if x%<0
+		x%=0
+	endif
+	return 1
+ENDP
+
+PROC K99A%:(seq$)
+	y%=y%-(fh%*val(mid$(seq$,2,2)))
+	if y%<0
+		y%=0
+	endif
+	return 1
+ENDP
+
+PROC K9A%:(seq$)
+	y%=y%-(fh%*val(mid$(seq$,2,1)))
+	if y%<0
+		y%=0
+	endif
+	return 1
+ENDP
+
+PROC K99B%:(seq$)
+	y%=y%+(fh%*val(mid$(seq$,2,2)))
+	if y%>fh%*24
+		y%=fh%*24
+	endif
+	return 1
+ENDP
+
+PROC K9B%:(seq$)
+	y%=y%+(fh%*val(mid$(seq$,2,1)))
+	if y%>fh%*24
+		y%=fh%*24
+	endif
+	return 1
+ENDP
+
+PROC K99C%:(seq$)
+	x%=x%+(fw%*val(mid$(seq$,2,2)))
+	if x%>fw%*80
+		x%=fw%*80
+	endif
+	return 1
+ENDP
+
+PROC K9C%:(seq$)
+	x%=x%+(fw%*val(mid$(seq$,2,1)))
+	if x%>fw%*80
+		x%=fw%*80
+	endif
+	return 1
+ENDP
+
+PROC K99D%:(seq$)
+	x%=x%-(fw%*val(mid$(seq$,2,2)))
+	if x%<0
+		x%=0
+	endif
+	return 1
+ENDP
+
+PROC K9D%:(seq$)
+	x%=x%-(fw%*val(mid$(seq$,2,1)))
+	if x%<0
+		x%=0
+	endif
+	return 1
+ENDP
+
+PROC K99m%:(seq$) rem set attributes
+	local a%,f$(2)
+	a%=val(mid$(seq$,2,2))
+	if a%=4
+		a%=2
+	elseif a%=7
+		a%=4
+	endif
+	f$=fix$(a%,0,2)
+	if len(f$)<2
+		f$="0"+f$
+	endif
+	return sgr%:("K"+f$+"S00m")
+ENDP
+
+PROC K9m%:(seq$)
+	local a%
+	a%=val(mid$(seq$,2,1))
+	if a%<2
+		gstyle a%
+	elseif a%=4
+		gstyle 2
+	elseif a%=7
+		gstyle 4
+	endif
+	return 1
+ENDP
+
+PROC K9S9m%:(seq$) rem set attributes
+	local a%,b%,f$(2),g$(2)
+	a%=val(mid$(seq$,2,1))
+	if a%=4
+		a%=2
+	elseif a%=7
+		a%=4
+	endif
+	f$="0"+fix$(a%,0,2)
+	
+	b%=val(mid$(seq$,4,1))
+	if b%=4
+		b%=2
+	elseif b%=7
+		b%=4
+	endif
+	g$="0"+fix$(b%,0,2)
+	
+	return sgr%:("K"+f$+"S"+g$+"m")
+ENDP
+
+PROC K99S99m%:(seq$) rem set attributes
+	local f$(2),g$(2)
+	f$=mid$(seq$,2,2)
+	if f$="04"
+		f$="02"
+	elseif f$="07"
+		f$="04"
+	endif
+	
+	g$=mid$(seq$,5,2)
+	if g$="04"
+		g$="02"
+	elseif g$="07"
+		g$="04"
+	endif
+	
+	return sgr%:("K"+f$+"S"+g$+"m")
+ENDP
+
+PROC K9S9S9m%:(seq$) rem set attributes
+	local a%,b%,c%,f$(2),g$(2),h$(2)
+	a%=val(mid$(seq$,2,1))
+	if a%=4
+		a%=2
+	elseif a%=7
+		a%=4
+	endif
+	f$="0"+fix$(a%,0,2)
+	
+	b%=val(mid$(seq$,4,1))
+	if b%=4
+		b%=2
+	elseif b%=7
+		b%=4
+	endif
+	g$="0"+fix$(b%,0,2)
+	
+	c%=val(mid$(seq$,6,1))
+	if c%=4
+		c%=2
+	elseif c%=7
+		c%=4
+	endif
+	h$="0"+fix$(c%,0,2)
+	
+	return sgr%:("K"+f$+"S"+g$+"S"+h$+"m")
+ENDP
+
+PROC sgr%:(seq$) rem set attributes =select graphic rendition
+	local a%,p%,count%
+	onerr katastro::
+	count%=2
+	do
+		p%=val(mid$(seq$,count%,2))
+		if p%=1
+			if fw%>4
+				a%=a%+1
+			endif
+		elseif p%=4
+			a%=a%+2
+		elseif p%=7
+			a%=a%+4
+		endif
+		count%=count%+3
+	until count%>=len(seq$)
+	gstyle a%
+	return 1
+	katastro::
+	onerr off
+	giprint err$(err)
+	pause 50
+ENDP
+
+PROC Km%:(seq$)
+	gstyle 0
+	return 1
+ENDP
+
+PROC K99S99H%:(seq$)      rem CUP
+	y%=(val(mid$(seq$,2,2))+0)*fh%
+	if y%=0
+		y%=fh%
+	endif
+	x%=val(mid$(seq$,5,2))*fw%
+	if x%=0
+		x%=fw%
+	endif
+	return 1
+ENDP
+
+PROC K9S9H%:(seq$)
+	y%=(val(mid$(seq$,2,1))+0)*fh%
+	if y%=0
+		y%=fh%
+	endif
+	x%=val(mid$(seq$,4,1))*fw%
+	if x%=0
+		x%=fw%
+	endif
+	return 1
+ENDP
+
+PROC K9S99H%:(seq$)
+	y%=(val(mid$(seq$,2,1))+0)*fh%
+	if y%=0
+		y%=fh%
+	endif
+	x%=val(mid$(seq$,4,2))*fw%
+	if x%=0
+		x%=fw%
+	endif
+	return 1
+ENDP
+
+PROC K99S9H%:(seq$)
+	y%=(val(mid$(seq$,2,2))+0)*fh%
+	if y%=0
+		y%=fh%
+	endif
+	x%=val(mid$(seq$,5,1))*fw%
+	if x%=0
+		x%=fw%
+	endif
+rem gat x%,y%+tmarg%
+	return 1
+ENDP
+
+PROC K9H%:(seq$)
+	local parm$(1)
+	parm$=mid$(seq$,2,1)
+	return K99S99H%:("K0"+parm$+"S00H")
+ENDP
+
+PROC KH%:(seq$)
+	x%=fw%
+	y%=fh%
+rem gat x%,y%+tmarg%
+	return 1
+ENDP
+
+PROC KK%:(seq$)      REM erase to EoL
+	gat x%,(y%+tmarg%)-fh%
+	gfill fw%*80,fh%,1
+rem 	gat x%,y%+tmarg%
+	return 1
+ENDP
+
+PROC K9K%:(seq$)
+	local f$(1)
+	f$=mid$(seq$,2,1)
+	if f$="1"
+		gat 0,(y%+tmarg%)-fh%
+		gfill x%,fh%,1
+	elseif f$="2"
+		gat 0,(y%+tmarg%)-fh%
+		gfill fw%*80,fh%,1
+	endif
+	return 1
+ENDP
+
+PROC M%:(seq$)    rem One line up
+	y%=y%-fh%
+	if y%<fh%
+		if srset%=1
+			gscroll 0,-fh%,0,fpos%,fw%*80,fh%
+		endif
+		gscroll 0,fh%,0,tmarg%,fw%*80,fpos%-tmarg%
+		y%=fh%
+		gsetwin 1,1
+	endif
+	return 1
+ENDP
+
+PROC K9J%:(seq$) rem    Erase display
+	local a$(1)
+	a$=mid$(seq$,2,1)
+	if a$="0"
+		gat x%,(y%+tmarg%)-fh%
+		gfill fw%*80,fh%*24,1
+		gat 0,y%+tmarg%
+		gfill fw%*80,fh%*24,1
+		gat x%,y%+tmarg%
+	endif
+	return 1
+ENDP
+
+PROC KJ%:(seq$)
+	return K9J%:("K0J")
+ENDP
+
+PROC AA%:(seq$)   rem  Set Charset
+	g%(1)=0
+	return 1
+ENDP
+
+PROC ZA%:(seq$)
+	g%(2)=0
+	return 1
+ENDP
+
+PROC AB%:(seq$)
+	g%(1)=0
+	return 1
+ENDP
+
+PROC ZB%:(seq$)
+	g%(2)=0
+	return 1
+ENDP
+
+PROC A9%:(seq$)
+	local p$(1)
+	p$=mid$(seq$,2,1)
+	if p$="0" or p$="2"
+		g%(1)=1
+	elseif p$="1"
+		g%(1)=0
+	endif
+	return 1
+ENDP
+
+PROC Z9%:(seq$)
+	local p$(1)
+	p$=mid$(seq$,2,1)
+	if p$="0" or p$="2"
+		g%(2)=1
+	elseif p$="1"
+		g%(2)=0
+	endif
+	return 1
+ENDP
+
+PROC K99S99r%:(seq$) rem SetScrollReg
+	tmarg%=(val(mid$(seq$,2,2))-1)*fh%
+	fpos%=val(mid$(seq$,5,2))*fh%
+	if tmarg%<>0 or fpos%<>(fh%*24)
+		srset%=1
+		beep 20,200
+	else
+		srset%=0
+		beep 20,100
+	endif
+	return 1
+ENDP
+
+PROC K99S9r%:(seq$)
+	return K99S99r%:("K"+mid$(seq$,2,2)+"S0"+mid$(seq$,5,1)+"r")
+ENDP
+
+PROC K9S99r%:(seq$)
+	return K99S99r%:("K0"+mid$(seq$,2,1)+"S"+mid$(seq$,4,2)+"r")
+ENDP
+
+PROC K9S9r%:(seq$)
+	return K99S99r%:("K0"+mid$(seq$,2,1)+"S0"+mid$(seq$,4,1)+"r")
+ENDP
+
+PROC KQ9h%:(seq$)  rem Cursor appl
+	return 1
+ENDP
+
+PROC KQ9l%:(seq$)  rem Cursor cursor
+	return 1
+ENDP
+
+PROC G%:(seq$)     rem Aux Keypad
+	return 1
+ENDP
+
+PROC R%:(seq$)     rem Aux Keypad
+	return 1
+ENDP
+
+PROC stmenu:  REM SnailTerm Menu
+	local m%
+	minit
+	REM mcard "File","Transmit",%t,"Receive",%r,"Exit",%x
+	mcard "File","Exit",%x
+	mcard "Settings","Font",%f,"Port",%p,"Handshake",%h,"Options",%o
+	m%=menu
+	menfunc%:(m%)
+ENDP
+
+PROC menfunc%:(m%)
+	if m%=%t        rem transmit file -- not yet implemented!
+		rem loadm "xymodem.opo"
+		rem txymdm:
+		rem unloadm "xymodem.opo"
+	elseif m%=%r    rem receive file -- not yet implemented!
+		rem loadm "xymodem.opo"
+		rem rxymdm:
+		rem unloadm "xymodem.opo"
+	elseif m%=%x    rem exit
+		stop
+	elseif m%=%o    rem options
+		optdia: 
+	elseif m%=%p    rem port settings
+		portdia:
+	elseif m%=%h    rem handshake settings
+		hndshdia:
+	elseif m%=%f
+		fontdia:
+	else
+		return -1
+	endif
+	return 0
+ENDP
+
+PROC parscmdl:
+	local offset%(6)
+	if cmd$(3)="C"
+		parse$(cmd$(2),"",offset%())
+		trap mkdir left$(cmd$(2),offset%(4)-1)
+		create cmd$(2),A,blink%,baud%,datbits%,stopbit%,parity%,ignopar%,xonxoff%,rtscts%,dtrdsr%,font$
+		A.blink%=5
+		A.baud%=15
+		A.datbits%=4
+		A.stopbit%=1
+		A.parity%=1
+		A.ignopar%=2
+		A.xonxoff%=2
+		A.rtscts%=1
+		A.dtrdsr%=2
+		A.font$=chr$(154) rem standard font of the machine
+		append
+	elseif cmd$(3)="O"
+		open cmd$(2),A,blink%,baud%,datbits%,stopbit%,parity%,ignopar%,xonxoff%,rtscts%,dtrdsr%,font$
+	endif
+ENDP
+
+PROC rsset:(baud%,parit%,data%,stop%,handsh%,term&)
+	local frame%,srchar%(6),dummy%,err%
+	frame%=data%-5
+	if stop%=2
+		frame%=frame% or 16
+	endif
+	if parit%
+		frame%=frame% or 32
+	endif
+	srchar%(1)=baud% or (baud%*256)
+	srchar%(2)=frame% or (parit%*256)
+	srchar%(3)=(handsh% and 255) or $1100
+	srchar%(4)=13
+	pokel addr(srchar%(5)),term&
+	err%=iow(port%,7,srchar%(1),dummy%)
+	if err%
+		raise err%
+	endif
+ENDP
+
+PROC anittty:
+	local c%(6),a%,ret%
+	a%=addr(c%(1))
+	pokeb a%,13
+	pokeb a%+1,13
+	pokeb a%+2,(2 or 16) rem 7bit, parity
+	pokeb a%+3,1   rem even parity
+	pokeb a%+4,11  rem hard+soft handshake
+	pokeb a%+5,17
+	pokeb a%+6,19
+	pokeb a%+7,0   rem don't ignore parit
+	a%=0
+	ret%=iow(port%,7,c%(1),a%)
+	if ret%<>0
+		raise ret%
+	endif
+ENDP
+
+PROC inittty:
+	local c%(6),a%,ret%
+	a%=addr(c%(1))
+	pokeb a%,13
+	pokeb a%+1,13
+	pokeb a%+2,3   rem 8 bit, no parity
+	pokeb a%+3,0   rem no parity
+	pokeb a%+4,11  rem hard+soft handshake
+	pokeb a%+5,17
+	pokeb a%+6,19
+	pokeb a%+7,1   rem ignore parity
+	a%=0
+	ret%=iow(port%,7,c%(1),a%)
+	if ret%<>0
+		raise ret%
+	endif
+ENDP
+
+PROC iniscrn:
+	local i%(32)
+	ginfo i%()
+	fh%=i%(3)
+	fw%=i%(7)
+ENDP
+
+PROC portdia:
+	local baud%,blist$(84),datbits%
+	local stopbit%,parity%,ignopar%
+	
+	baud%=A.baud%
+	blist$="50,75,110,134,150,300,600,1200,1800,2000,2400,3600,4800,7200,9600"
+	if machine%=1
+		blist$=blist$+",19200,38400,57600"
+	endif
+	
+	datbits%=A.datbits%
+	stopbit%=A.stopbit%
+	parity%=A.parity%
+	ignopar%=A.ignopar%
+	
+	dinit "Serial Settings"
+	dchoice baud%,"line speed (bps):",blist$
+	dchoice datbits%,"data bits:","5,6,7,8"
+	dchoice stopbit%,"stop bits:","1,2"
+	dchoice parity%,"parity bit:","none,even,odd"
+	dchoice ignopar%,"ignore parity errors?","no,yes"
+	if dialog
+		A.baud%=baud%
+		A.datbits%=datbits%
+		A.stopbit%=stopbit%
+		A.parity%=parity%
+		A.ignopar%=ignopar%
+		update
+		initline:
+	endif
+ENDP
+
+PROC hndshdia:
+	local xonxoff%,rtscts%,dtrdsr%
+	
+	xonxoff%=A.xonxoff%
+	rtscts%=A.rtscts%
+	dtrdsr%=A.dtrdsr%
+	
+	dinit "Handshake"
+	dchoice xonxoff%,"Xon/Xoff:","Off,On"
+	dchoice rtscts%,"RTS-CTS:","On,Off"
+	dchoice dtrdsr%,"DTR-DSR:","Off,On"
+	if dialog
+		A.xonxoff%=xonxoff%
+		A.rtscts%=rtscts%
+		A.dtrdsr%=dtrdsr%
+		update
+		initline:
+	endif
+ENDP
+
+PROC initline:
+	local a%(6),ret%,par2%
+	pokeb addr(a%(1)),A.baud%
+	pokeb addr(a%(1))+1,A.baud%
+	a%(2)=(A.datbits%-1)
+	a%(2)=a%(2) or (16*(A.stopbit%-1))
+	if A.parity%<>1
+		a%(2)=a%(2) or 32
+	endif
+	pokeb addr(a%(2))+1,A.parity%-1
+	if A.xonxoff%=2
+		a%(3)=3
+	endif
+	if A.rtscts%=2
+		a%(3)=a%(3) or 4
+	endif
+	if A.dtrdsr%=2
+		a%(3)=a%(3) or 8
+	endif
+	pokeb addr(a%(3))+1,17
+	a%(4)=19
+	if A.ignopar%=2
+		pokeb addr(a%(4))+1,1
+	endif
+	
+	ret%=ioclose(port%)
+	if ret%<0
+		fehler:(ret%)
+	endif
+	ret%=ioopen(port%,"tty:a",-1)
+	if ret%<0
+		fehler:(ret%)
+		return
+	endif
+	ret%=iow(port%,9,#0,#0)  rem Discard buffer contents
+	if ret%<0
+		fehler:(ret%)
+		return
+	endif
+	ret%=iow(port%,7,a%(1),par2%)
+	if ret%<0
+		fehler:(ret%)
+	endif
+ENDP
+
+PROC fontdia:
+	local fontfil$(129),list$(150),chosen%
+	if len(A.font$)>5  rem A.font$ likely contains a filename
+		fontfil$=A.font$
+	else
+		fontfil$="LOC::M:\OPD\*.FON"
+	endif
+	
+	if machine%=0   rem classic S3
+		list$="user defined, Normal, Bold"
+	elseif machine%=1   rem S3a or similar
+		list$="user defined, Mono 8x8, Roman 8, Roman 11, Roman 13, Roman 16, Swiss 8, Swiss 11, Swiss 13, Swiss 16, Mono 6x6"
+	endif
+	
+	dinit "Select Screen Font"
+	dchoice chosen%,"Font:",list$
+	dfile fontfil$,"user defined Font:",0
+	dialog
+	
+	if machine%=0
+		chosen%=chosen%-1
+		if chosen%=0
+			A.font$=fontfil$
+		else
+			A.font$=chr$(chosen%)
+		endif
+	elseif machine%=1
+		chosen%=chosen%+2
+		if chosen%=3
+			A.font$=fontfil$
+		else
+			A.font$=chr$(chosen%)
+		endif
+	endif
+	update
+	giprint "Please restart program to activate changes"
+ENDP
+
+PROC openfont:
+	local fontid%
+	onerr noload::
+	fontid%=gloadfont(A.font$)
+	goto setfont::
+noload::
+	fontid%=asc(A.font$)
+setfont::
+	onerr off
+	gfont fontid%
+ENDP
+
+PROC optdia:
+	local blink&
+	blink&=A.blink%
+	dinit "Options"
+	dlong blink&,"Cursor blink rate:",1,30
+	dialog
+	A.blink%=blink&
+	update
+ENDP
+
+PROC fehler:(wert%)
+	giprint err$(wert%)
+	pause 10
+ENDP
